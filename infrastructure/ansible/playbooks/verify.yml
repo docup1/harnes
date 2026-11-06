@@ -1,0 +1,9 @@
+---
+# End-to-end verification. This playbook intentionally fails when a real check
+# fails; it does not report success from an HTTP 200 alone.
+- name: Verify the agent platform
+  hosts: home
+  become: true
+  gather_facts: true
+  roles:
+    - role: verify

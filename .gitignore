@@ -1,0 +1,12 @@
+.venv/
+.ssh/
+.vault_pass
+*.retry
+*.log
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+.DS_Store
+__pycache__/
+collections/

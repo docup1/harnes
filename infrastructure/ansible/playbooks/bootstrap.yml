@@ -1,0 +1,9 @@
+---
+# Prepare the host: packages, unprivileged runtime user, Node.js, Podman.
+- name: Bootstrap the host
+  hosts: home
+  become: true
+  gather_facts: true
+  roles:
+    - role: base
+    - role: podman

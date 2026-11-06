@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  role_name: base
+  description: Base packages, runtime user and host hardening for the agent platform
+  license: MIT
+dependencies: []

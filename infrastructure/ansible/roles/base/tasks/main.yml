@@ -1,0 +1,159 @@
+---
+- name: Set the system timezone
+  ansible.builtin.command:
+    cmd: timedatectl set-timezone {{ timezone }}
+  register: base_timezone
+  changed_when: base_timezone.rc == 0
+  failed_when: base_timezone.rc != 0
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ base_apt_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: base_apt
+  retries: 3
+  delay: 5
+  until: base_apt is succeeded
+
+- name: Create the dedicated runtime group
+  ansible.builtin.group:
+    name: "{{ agent_group }}"
+    state: present
+
+- name: Create the dedicated unprivileged runtime user
+  ansible.builtin.user:
+    name: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    home: "{{ agent_home }}"
+    shell: "{{ agent_shell }}"
+    create_home: false
+    password: "!"
+    state: present
+
+- name: Create the agent directory tree
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ agent_home }}", mode: "0750" }
+    - { path: "{{ agent_projects }}", mode: "0750" }
+    - { path: "{{ agent_artifacts }}/screenshots", mode: "0750" }
+    - { path: "{{ agent_artifacts }}/test-results", mode: "0750" }
+    - { path: "{{ agent_artifacts }}/reports", mode: "0750" }
+    - { path: "{{ agent_logs }}/build", mode: "0750" }
+    - { path: "{{ agent_logs }}/gui", mode: "0750" }
+    - { path: "{{ agent_logs }}/agent", mode: "0750" }
+    - { path: "{{ dsh_home }}", mode: "0750" }
+    - { path: "{{ dsh_workspace }}", mode: "0750" }
+    - { path: "{{ agent_home }}/.config/systemd/user", mode: "0750" }
+    - { path: "{{ agent_home }}/.config/containers/systemd", mode: "0750" }
+    - { path: "{{ agent_home }}/.vnc", mode: "0700" }
+    - { path: "{{ agent_secrets }}", mode: "0700" }
+    - { path: "{{ agent_home }}/caddy/data", mode: "0750" }
+    - { path: "{{ agent_home }}/caddy/config", mode: "0750" }
+    - { path: "{{ agent_home }}/containers/java-sandbox", mode: "0750" }
+    - { path: "{{ agent_home }}/ollama", mode: "0750" }
+    - { path: "{{ agent_home }}/bin", mode: "0750" }
+
+- name: Read the agent uid and gid
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ agent_user }}"
+
+- name: Record agent identity
+  ansible.builtin.set_fact:
+    agent_uid: "{{ getent_passwd[agent_user][1] }}"
+    agent_gid: "{{ getent_passwd[agent_user][2] }}"
+
+- name: Ensure subordinate uid/gid ranges exist for rootless Podman
+  ansible.builtin.shell: |
+    set -euo pipefail
+    grep -q '^{{ agent_user }}:' /etc/subuid || usermod --add-subuids 200000-231071 {{ agent_user }}
+    grep -q '^{{ agent_user }}:' /etc/subgid || usermod --add-subgids 200000-231071 {{ agent_user }}
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Enable lingering for the agent user (systemd --user survives logout)
+  ansible.builtin.command:
+    cmd: loginctl enable-linger {{ agent_user }}
+  changed_when: false
+
+- name: Raise inotify limits for Gradle and file watchers
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-agent-platform.conf
+    mode: "0644"
+    content: |
+      fs.inotify.max_user_watches = 524288
+      fs.inotify.max_user_instances = 8192
+      vm.max_map_count = 262144
+  register: base_sysctl
+
+- name: Apply sysctl settings
+  ansible.builtin.command:
+    cmd: sysctl --system
+  when: base_sysctl is changed
+  changed_when: base_sysctl is changed
+
+# ---------------------------------------------------------------------------
+# Node.js 24 from NodeSource. DeepSeek Harness requires Node.js >= 24.9.
+# ---------------------------------------------------------------------------
+- name: Ensure the NodeSource keyring directory exists
+  ansible.builtin.file:
+    path: /usr/share/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add the NodeSource signing key
+  ansible.builtin.get_url:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    dest: /usr/share/keyrings/nodesource.gpg
+    mode: "0644"
+    force: false
+
+- name: Add the Node.js 24 repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main"
+    filename: nodesource
+    state: present
+
+- name: Install Node.js 24
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+
+- name: Verify Node.js version
+  ansible.builtin.command:
+    cmd: node --version
+  register: base_node_version
+  changed_when: false
+
+- name: Fail when Node.js is older than 24
+  ansible.builtin.assert:
+    that:
+      - base_node_version.stdout is version('v24.9.0', '>=')
+    fail_msg: "Node.js 24.9+ is required, found {{ base_node_version.stdout }}"
+
+# ---------------------------------------------------------------------------
+# Firewall: keep the agent UI on the LAN only. VNC stays on loopback and is
+# reached through an SSH tunnel.
+# ---------------------------------------------------------------------------
+- name: Allow the Harness HTTPS port from the local network
+  community.general.ufw:
+    rule: allow
+    port: "{{ caddy_port }}"
+    proto: tcp
+    from_ip: 192.168.0.0/24
+    comment: "DeepSeek Harness UI (LAN)"
+
+- name: Ensure UFW is enabled
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming

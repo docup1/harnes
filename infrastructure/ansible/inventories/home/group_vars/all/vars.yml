@@ -1,0 +1,47 @@
+---
+timezone: Europe/Moscow
+
+# Dedicated, unprivileged runtime user
+agent_user: agent
+agent_group: agent
+agent_home: /srv/agent
+agent_shell: /bin/bash
+
+# Podman / services
+podman_version: "4.9.3"
+java_image_name: localhost/java-sandbox
+java_image_tag: "24.04"
+java_container_name: java-sandbox
+vnc_display: ":99"
+vnc_port: 5900
+
+# Existing Ollama installation (Docker container on the host)
+ollama_container: agent-ollama
+ollama_base_url: http://127.0.0.1:11434
+ollama_model: qwen3-coder:30b
+ollama_model_ctx: qwen3-coder-16k:latest
+ollama_context_length: 16384
+
+# DeepSeek Harness
+dsh_version: 0.2.2-rc.1
+dsh_home: /srv/agent/.dsh
+dsh_workspace: /srv/agent/harness-workspace
+dsh_port: 3080
+dsh_public_host: 192.168.0.100:8443
+dsh_public_url: https://192.168.0.100:8443/
+
+# Caddy reverse proxy
+caddy_image: docker.io/library/caddy:2.10-alpine
+caddy_port: 8443
+caddy_address: 192.168.0.100
+caddy_basic_user: agent
+
+# Paths
+agent_projects: /srv/agent/projects
+agent_artifacts: /srv/agent/artifacts
+agent_logs: /srv/agent/logs
+agent_secrets: /srv/agent/.secrets
+
+# Optional KVM sandbox (Terraform). The default deployment uses the Podman
+# sandbox; set to true only when the VM path is selected.
+enable_kvm_vm: false

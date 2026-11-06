@@ -1,0 +1,11 @@
+---
+# Configure the runtime: Ollama model, Java GUI sandbox, Caddy, DeepSeek Harness.
+- name: Deploy the agent platform
+  hosts: home
+  become: true
+  gather_facts: true
+  roles:
+    - role: ollama
+    - role: java_sandbox
+    - role: caddy
+    - role: harness

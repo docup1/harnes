@@ -1,0 +1,40 @@
+---
+base_apt_packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - wget
+  - gnupg
+  - git
+  - jq
+  - unzip
+  - zip
+  - build-essential
+  - python3
+  - python3-pip
+  - rsync
+  - tmux
+  - htop
+  - logrotate
+  - apache2-utils
+  # Java on the host: the agent can build and run unit tests without the GUI
+  # sandbox; GUI tests run inside the sandbox container.
+  - openjdk-21-jdk
+  # Virtual X11 and desktop automation on the host (used by the sandbox and
+  # available for diagnostics).
+  - xvfb
+  - xauth
+  - x11-utils
+  - xdotool
+  - xfce4
+  - xfce4-terminal
+  - x11vnc
+  - dbus-x11
+  - imagemagick
+  # Rootless containers
+  - podman
+  - uidmap
+  - slirp4netns
+  - fuse-overlayfs
+  - passt
+  - ufw
